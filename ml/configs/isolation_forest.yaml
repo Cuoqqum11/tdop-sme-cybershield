@@ -1,0 +1,24 @@
+model:
+  name: isolation_forest
+  n_estimators: 200
+  contamination: 0.05
+  max_samples: auto
+  random_state: 42
+
+scoring:
+  anomaly_threshold: 0.65
+  high_risk_threshold: 0.80
+
+features:
+  window_sizes:
+    - 5m
+    - 15m
+    - 1h
+
+  include:
+    - alert_count
+    - failed_login_count
+    - unique_srcip_count
+    - high_rule_level_count
+    - off_hours_login_flag
+    - new_srcip_flag

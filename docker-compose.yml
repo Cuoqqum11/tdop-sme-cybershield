@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: sme-cybershield-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: sme_cybershield
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sme_cybershield"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    container_name: sme-cybershield-api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/sme_cybershield
+      RESPONSE_MODE: dry_run
+      ANOMALY_THRESHOLD: "0.65"
+      TIMEZONE: Asia/Ho_Chi_Minh
+      DEFAULT_LANGUAGE: vi
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+volumes:
+  db_data:
