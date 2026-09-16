@@ -1,16 +1,26 @@
+from datetime import datetime, timezone
+
 from fastapi import FastAPI, Depends
 from sqlmodel import Session, select
 
+from app.core.config import settings
 from app.core.database import init_db, get_session
-from app.models import RawEvent, NormalizedEvent, Alert, Incident
+from app.models import (
+    RawEvent,
+    NormalizedEvent,
+    Alert,
+    Incident,
+)
 from app.services.event_normalizer import normalize_wazuh_event
-from app.services.risk_engine import calculate_simple_risk
+from app.services.feature_extractor import build_feature_vector_for_event
+from app.services.anomaly_scorer import score_feature_vector
+from app.services.risk_engine import calculate_risk
 
 
 app = FastAPI(
     title="SME CyberShield API",
     description="Lightweight AI-Assisted XDR for Vietnamese SMEs",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 
@@ -32,12 +42,17 @@ def receive_wazuh_event(
     payload: dict,
     session: Session = Depends(get_session),
 ):
+    # 1. Store raw Wazuh event
     raw_event = RawEvent(payload=payload)
     session.add(raw_event)
     session.commit()
     session.refresh(raw_event)
 
+    # 2. Normalize event
     normalized_data = normalize_wazuh_event(payload)
+
+    if normalized_data.get("timestamp") is None:
+        normalized_data["timestamp"] = datetime.now(timezone.utc)
 
     normalized_event = NormalizedEvent(
         raw_event_id=raw_event.id,
@@ -48,14 +63,37 @@ def receive_wazuh_event(
     session.commit()
     session.refresh(normalized_event)
 
-    risk_score = calculate_simple_risk(normalized_event)
+    # 3. Extract features
+    features = build_feature_vector_for_event(
+        session=session,
+        event=normalized_event,
+    )
+
+    # 4. Score with Isolation Forest
+    anomaly_score = score_feature_vector(features)
+
+    # 5. Calculate risk score
+    risk_score = calculate_risk(
+        event=normalized_event,
+        anomaly_score=anomaly_score,
+    )
+
+    # 6. Decide whether to create alert
+    should_alert = False
 
     if normalized_event.rule_level is not None and normalized_event.rule_level >= 7:
+        should_alert = True
+
+    if anomaly_score is not None and anomaly_score >= settings.anomaly_threshold:
+        should_alert = True
+
+    if should_alert:
         alert = Alert(
             normalized_event_id=normalized_event.id,
-            title=normalized_event.rule_description or "Wazuh security alert",
+            title=normalized_event.rule_description or "AI anomaly alert",
             severity=normalized_event.rule_level,
             risk_score=risk_score,
+            anomaly_score=anomaly_score,
         )
 
         session.add(alert)
@@ -65,7 +103,11 @@ def receive_wazuh_event(
         "status": "received",
         "raw_event_id": raw_event.id,
         "normalized_event_id": normalized_event.id,
+        "entity_type": features.get("entity_type"),
+        "entity_value": features.get("entity_value"),
+        "anomaly_score": anomaly_score,
         "risk_score": risk_score,
+        "features": features,
     }
 
 

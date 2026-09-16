@@ -13,7 +13,7 @@ Planned stack:
 Planned pages:
 
 - Dashboard
-- Incidents
+- Incidents 
 - Incident Detail
 - Assets
 - Reports
