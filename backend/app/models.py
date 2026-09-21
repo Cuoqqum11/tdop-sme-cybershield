@@ -35,11 +35,12 @@ class NormalizedEvent(SQLModel, table=True):
 
     raw_message: Optional[str] = None
 
-
 class Alert(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-
     normalized_event_id: Optional[int] = None
+    
+    # NEW: Link this alert to an incident
+    incident_id: Optional[int] = Field(default=None, foreign_key="incident.id")
 
     title: str
     severity: Optional[int] = None
@@ -47,7 +48,6 @@ class Alert(SQLModel, table=True):
     anomaly_score: Optional[float] = None
 
     status: str = "new"
-
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -56,8 +56,14 @@ class Incident(SQLModel, table=True):
 
     title: str
     status: str = "open"
-
     risk_score: int = 0
+
+    entity_type: Optional[str] = None
+    entity_value: Optional[str] = None
+
+    # NEW: structured reasons (JSON dict) + linked alert counter
+    reasons_json: Optional[str] = None
+    alert_count: int = 0
 
     explanation: Optional[str] = None
     recommended_action: Optional[str] = None
