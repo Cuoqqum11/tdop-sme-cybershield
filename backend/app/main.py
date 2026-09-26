@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends
 from sqlmodel import Session, select
+from pydantic import BaseModel
+from app.models import SMEProfile
 
 from app.core.config import settings
 from app.core.database import init_db, get_session
@@ -10,7 +12,8 @@ from app.models import (
     NormalizedEvent,
     Alert,
     Incident,
-)
+    ResponseAction,
+) 
 from app.services.event_normalizer import normalize_wazuh_event
 from app.services.feature_extractor import build_feature_vector_for_event
 from app.services.anomaly_scorer import score_feature_vector
@@ -19,11 +22,28 @@ from app.services.risk_engine import calculate_risk
 # NEW IMPORTS
 from app.services.explainer import generate_explanation
 from app.services.incident_correlator import correlate_and_update_incident
+from app.services.response_orchestrator import generate_response_actions
+from fastapi.middleware.cors import CORSMiddleware
+
+class SMEProfileInput(BaseModel):
+    company_type: str
+    company_size: str
+    services: str = ""
+    security_mode: str = "monitoring"
+    language: str = "vi"
 
 app = FastAPI(
     title="SME CyberShield API",
     description="Lightweight AI-Assisted XDR for Vietnamese SMEs",
     version="0.3.0", # Bumped version
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"], # Vite's default port
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.on_event("startup")
@@ -90,7 +110,7 @@ def receive_wazuh_event(
         session.commit()
         session.refresh(alert)
 
-        # --- NEW: INCIDENT CORRELATION ---
+        # --- INCIDENT CORRELATION ---
         incident = correlate_and_update_incident(
             session=session,
             alert=alert,
@@ -101,10 +121,20 @@ def receive_wazuh_event(
             recommended_action=recommended_action,
         )
         
+        # --- RESPONSE ORCHESTRATOR ---
+        # Only generate response actions if this is a brand new incident
+        existing_actions = session.exec(
+            select(ResponseAction).where(ResponseAction.incident_id == incident.id)
+        ).first()
+        
+        if not existing_actions:
+            generate_response_actions(session, incident)
+
         incident_data = {
             "incident_id": incident.id,
             "title": incident.title,
-            "risk_score": incident.risk_score
+            "risk_score": incident.risk_score,
+            "alert_count": incident.alert_count
         }
 
     return {
@@ -134,3 +164,54 @@ def dashboard_summary(session: Session = Depends(get_session)):
         "total_incidents": len(incidents),
         "system_status": "monitoring",
     }
+
+@app.get("/api/v1/response/history")
+def get_response_history(session: Session = Depends(get_session)):
+    """Returns all proposed and executed response actions."""
+    actions = session.exec(select(ResponseAction)).all()
+    return actions
+
+@app.post("/api/v1/response/{action_id}/approve")
+def approve_action(action_id: int, session: Session = Depends(get_session)):
+    """
+    Simulates an admin approving a proposed response action.
+    In a real production system, this would trigger the Wazuh Active Response script.
+    """
+    action = session.get(ResponseAction, action_id)
+    if not action:
+        return {"error": "Action not found"}
+    
+    if action.status == "proposed":
+        action.status = "approved"
+        # Here you would normally call Wazuh API to execute the block/isolate command
+        session.add(action)
+        session.commit()
+        return {
+            "status": "approved", 
+            "message": f"Action '{action.action_type}' approved and executed in {action.mode} mode."
+        }
+    
+    return {"status": action.status, "message": "Action already processed."}
+
+@app.get("/api/v1/onboarding/profile")
+def get_profile(session: Session = Depends(get_session)):
+    return session.exec(select(SMEProfile)).first()
+
+
+@app.post("/api/v1/onboarding/profile")
+def save_profile(payload: SMEProfileInput, session: Session = Depends(get_session)):
+    profile = session.exec(select(SMEProfile)).first()
+
+    if profile:
+        profile.company_type = payload.company_type
+        profile.company_size = payload.company_size
+        profile.services = payload.services
+        profile.security_mode = payload.security_mode
+        profile.language = payload.language
+    else:
+        profile = SMEProfile(**payload.dict())
+
+    session.add(profile)
+    session.commit()
+    session.refresh(profile)
+    return profile
