@@ -41,6 +41,7 @@ export default function Dashboard() {
             <ShieldCheck size={20} /> Active Incidents
           </div>
           <p className="text-3xl font-bold text-cyber-accent">{data.total_incidents}</p>
+          <p className="text-sm text-gray-500 mt-1">all-time: {data.total_incidents_all_time}</p>
         </div>
       </div>
     </div>

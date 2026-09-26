@@ -7,6 +7,7 @@ const api = axios.create({
 export interface Summary {
   total_alerts: number;
   total_incidents: number;
+  total_incidents_all_time: number;
   system_status: string;
 }
 
@@ -48,3 +49,5 @@ export const getSummary = () => api.get<Summary>('/api/v1/dashboard/summary');
 export const getIncidents = () => api.get<Incident[]>('/api/v1/incidents');
 export const getResponseHistory = () => api.get<ResponseAction[]>('/api/v1/response/history');
 export const approveAction = (id: number) => api.post(`/api/v1/response/${id}/approve`);
+export const acknowledgeIncident = (id: number) => api.post(`/api/v1/incidents/${id}/acknowledge`);
+export const resolveIncident = (id: number) => api.post(`/api/v1/incidents/${id}/resolve`);

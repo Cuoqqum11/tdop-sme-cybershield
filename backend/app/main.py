@@ -154,14 +154,41 @@ def list_alerts(session: Session = Depends(get_session)):
 def list_incidents(session: Session = Depends(get_session)):
     return session.exec(select(Incident)).all()
 
+@app.post("/api/v1/incidents/{incident_id}/acknowledge")
+def acknowledge_incident(incident_id: int, session: Session = Depends(get_session)):
+    incident = session.get(Incident, incident_id)
+    if not incident:
+        return {"error": "Incident not found"}
+
+    if incident.status == "resolved":
+        return {"status": "resolved", "message": "Incident already resolved."}
+
+    incident.status = "acknowledged"
+    session.add(incident)
+    session.commit()
+    return {"status": "acknowledged", "incident_id": incident.id}
+
+@app.post("/api/v1/incidents/{incident_id}/resolve")
+def resolve_incident(incident_id: int, session: Session = Depends(get_session)):
+    incident = session.get(Incident, incident_id)
+    if not incident:
+        return {"error": "Incident not found"}
+
+    incident.status = "resolved"
+    session.add(incident)
+    session.commit()
+    return {"status": "resolved", "incident_id": incident.id}
+
 @app.get("/api/v1/dashboard/summary")
 def dashboard_summary(session: Session = Depends(get_session)):
     alerts = session.exec(select(Alert)).all()
     incidents = session.exec(select(Incident)).all()
+    open_incidents = [i for i in incidents if i.status == "open"]
 
     return {
         "total_alerts": len(alerts),
-        "total_incidents": len(incidents),
+        "total_incidents": len(open_incidents),
+        "total_incidents_all_time": len(incidents),
         "system_status": "monitoring",
     }
 

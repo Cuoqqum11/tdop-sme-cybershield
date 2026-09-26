@@ -3,6 +3,8 @@ import {
   getIncidents,
   getResponseHistory,
   approveAction,
+  acknowledgeIncident,
+  resolveIncident,
   type Incident,
   type ResponseAction,
 } from '../api/client.ts';
@@ -28,10 +30,27 @@ export default function Incidents() {
     fetchData();
   };
 
+  const handleAcknowledge = async (incidentId: number) => {
+    await acknowledgeIncident(incidentId);
+    fetchData();
+  };
+
+  const handleResolve = async (incidentId: number) => {
+    await resolveIncident(incidentId);
+    fetchData();
+  };
+
   const getRiskColor = (score: number) => {
     if (score >= 80) return 'text-red-400 bg-red-900/30';
     if (score >= 50) return 'text-yellow-400 bg-yellow-900/30';
     return 'text-green-400 bg-green-900/30';
+  };
+
+  const getStatusColor = (status: string) => {
+    if (status === 'open') return 'text-cyber-danger bg-red-900/30 border-cyber-danger';
+    if (status === 'acknowledged') return 'text-yellow-400 bg-yellow-900/30 border-yellow-400';
+    if (status === 'resolved') return 'text-cyber-success bg-green-900/30 border-cyber-success';
+    return 'text-gray-400 bg-slate-800 border-cyber-border';
   };
 
   return (
@@ -46,15 +65,38 @@ export default function Incidents() {
                 <div>
                   <h3 className="text-xl font-semibold text-white flex items-center gap-2">
                     <AlertTriangle className="text-red-500" size={20} /> {inc.title}
+                    <span className={`px-3 py-0.5 rounded-full text-xs font-bold uppercase border ${getStatusColor(inc.status)}`}>
+                      {inc.status}
+                    </span>
                   </h3>
                   <p className="text-sm text-gray-400 mt-1">
                     Entity: <span className="text-cyber-accent">{inc.entity_type}: {inc.entity_value}</span>
                     &nbsp;|&nbsp; Alerts Grouped: <span className="font-bold">{inc.alert_count}</span>
                   </p>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-sm font-bold ${getRiskColor(inc.risk_score)}`}>
-                  Risk: {inc.risk_score}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  <span className={`px-3 py-1 rounded-full text-sm font-bold ${getRiskColor(inc.risk_score)}`}>
+                    Risk: {inc.risk_score}
+                  </span>
+                  {inc.status !== 'resolved' && (
+                    <div className="flex gap-2">
+                      {inc.status === 'open' && (
+                        <button
+                          onClick={() => handleAcknowledge(inc.id)}
+                          className="bg-cyber-panel border border-yellow-400 text-yellow-400 px-3 py-1 rounded text-xs font-bold hover:bg-yellow-900/30 transition"
+                        >
+                          Acknowledge
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleResolve(inc.id)}
+                        className="bg-cyber-panel border border-cyber-success text-cyber-success px-3 py-1 rounded text-xs font-bold hover:bg-green-900/30 transition"
+                      >
+                        Resolve
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="bg-slate-900/50 p-4 rounded border border-slate-700 mb-4">

@@ -38,7 +38,7 @@ def correlate_and_update_incident(
     statement = select(Incident).where(
         Incident.entity_type == entity_type,
         Incident.entity_value == entity_value,
-        Incident.status == "open",
+        Incident.status.in_(["open", "acknowledged"]),  # type: ignore[attr-defined]
         Incident.last_seen >= window_start,
     )
 
